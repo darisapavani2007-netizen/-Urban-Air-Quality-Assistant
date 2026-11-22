@@ -66,6 +66,15 @@ class HealthResponse(BaseModel):
 # Global variables for services
 rag_pipeline = None
 vector_store = None
+_init_lock = asyncio.Lock()
+
+async def ensure_initialized():
+    """Ensure RAG pipeline and vector store are initialized (handles serverless cold starts)"""
+    global rag_pipeline, vector_store
+    if rag_pipeline is None or vector_store is None:
+        async with _init_lock:
+            if rag_pipeline is None or vector_store is None:
+                await startup_event()
 
 @app.on_event("startup")
 async def startup_event():
@@ -106,6 +115,9 @@ async def startup_event():
 @app.get("/")
 async def root():
     """Root endpoint serving the interactive UI or basic information"""
+    html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
+    if os.path.exists(html_path):
+        return FileResponse(html_path)
     if os.path.exists("index.html"):
         return FileResponse("index.html")
     return {
@@ -126,6 +138,7 @@ async def info():
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
+    await ensure_initialized()
     services = {}
     
     # Check vector store
@@ -152,6 +165,7 @@ async def health_check():
 async def chat(request: ChatRequest):
     """Main chat endpoint for air quality queries"""
     try:
+        await ensure_initialized()
         if not rag_pipeline:
             raise HTTPException(status_code=503, detail="RAG pipeline not initialized")
         
@@ -177,6 +191,7 @@ async def chat(request: ChatRequest):
 @app.get("/data/refresh")
 async def refresh_data(background_tasks: BackgroundTasks):
     """Trigger data refresh in background"""
+    await ensure_initialized()
     background_tasks.add_task(rag_pipeline.refresh_data)
     return {"message": "Data refresh initiated", "timestamp": datetime.utcnow().isoformat()}
 

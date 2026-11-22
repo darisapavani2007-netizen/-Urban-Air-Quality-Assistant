@@ -235,6 +235,12 @@ class VectorStore:
 
         return True
     
+    def _get_storage_path(self) -> str:
+        if os.environ.get('VERCEL'):
+            return '/tmp/vector_store.json'
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(base_dir, 'data', 'vector_store.json')
+
     async def _save_data(self):
         """Save vector store data to disk"""
         try:
@@ -243,17 +249,19 @@ class VectorStore:
                 'metadata': self.metadata,
                 'timestamp': datetime.utcnow().isoformat()
             }
-            os.makedirs('data', exist_ok=True)
-            with open('data/vector_store.json', 'w', encoding='utf-8') as f:
+            storage_path = self._get_storage_path()
+            os.makedirs(os.path.dirname(storage_path), exist_ok=True)
+            with open(storage_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2)
         except Exception as e:
-            logger.error(f"Error saving vector store data: {e}")
+            logger.warning(f"Vector store persistence skipped ({e}). In-memory search remains fully active.")
     
     async def _load_existing_data(self):
         """Load existing data from disk"""
         try:
-            if os.path.exists('data/vector_store.json'):
-                with open('data/vector_store.json', 'r', encoding='utf-8') as f:
+            storage_path = self._get_storage_path()
+            if os.path.exists(storage_path):
+                with open(storage_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 
                 self.documents = data.get('documents', [])
@@ -268,7 +276,7 @@ class VectorStore:
                         self.embeddings = embeddings
                     logger.info(f"Loaded {len(self.documents)} existing documents into vector store")
         except Exception as e:
-            logger.error(f"Error loading existing data: {e}")
+            logger.warning(f"Error loading existing data: {e}")
     
     async def health_check(self):
         """Check vector store health"""

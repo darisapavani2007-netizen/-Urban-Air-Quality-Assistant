@@ -54,6 +54,7 @@ Thumbs.db
 # Data files (vector store)
 data/
 *.json
+!vercel.json
 *.pkl
 *.faiss
 
